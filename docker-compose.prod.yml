@@ -28,14 +28,7 @@ services:
         volumes:
             - certbot_www:/var/www/certbot
             - letsencrypt:/etc/letsencrypt
-        entrypoint: >
-            sh -c "certbot certonly --webroot
-                   -w /var/www/certbot
-                   --email ${CERTBOT_EMAIL}
-                   -d ${DOMAIN}
-                   --agree-tos
-                   --non-interactive
-                   --force-renewal"
+        entrypoint: /bin/sh
 
 volumes:
     certbot_www:
