@@ -1,0 +1,73 @@
+version: "3.9"
+
+services:
+    web:
+        build: .
+        volumes:
+            - ./app:/app
+
+            - static_volume:/app/static
+            - media_volume:/app/media
+        env_file:
+            - .env
+        command: >
+            sh -c "python manage.py migrate &&
+                   python manage.py runserver 0.0.0.0:8000"
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+
+        expose:
+            - "8000"
+        restart: unless-stopped
+
+    db:
+        image: postgres:16-alpine
+        env_file:
+            - .env
+        environment:
+            POSTGRES_DB: ${DB_NAME}
+            POSTGRES_USER: ${DB_USER}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+        volumes:
+            - pg_data:/var/lib/postgresql/data
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U ${DB_USER} -d ${DB_NAME} -h 127.0.0.1",
+                ]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+        restart: unless-stopped
+
+    redis:
+        image: redis:7-alpine
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+        restart: unless-stopped
+
+    celery:
+        build: .
+        volumes:
+            - ./app:/app
+        env_file:
+            - .env
+        command: celery -A core worker --loglevel=info
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        restart: unless-stopped
+
+volumes:
+    pg_data:
+    static_volume:
+    media_volume:

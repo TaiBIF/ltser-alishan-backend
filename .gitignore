@@ -1,0 +1,105 @@
+# ================================
+# Python / Django ignores
+# ================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.so
+*.egg-info/
+*.egg
+*.log
+*.sqlite3
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+env/
+Pipfile.lock
+
+# ================================
+# Django specific
+# ================================
+# Static & Media Collection output
+static/
+staticfiles/
+media/
+
+# Local secrets
+secrets.json
+*.pem
+*.key
+
+# ================================
+# Environment variables
+# ================================
+*.env
+.env.dev
+.env.prod
+.env.local
+.env.*.backup
+
+# If using dotenv inside app folder
+**/.env
+
+# ================================
+# Celery
+# ================================
+celerybeat-schedule
+celerybeat.pid
+
+# ================================
+# DB files (if sometimes developing with SQLite)
+# ================================
+db.sqlite3
+*.sqlite3
+
+# ================================
+# Django migrations cache
+# ================================
+# (Keep migration files, ignore compiled extras)
+migrations/**/__pycache__/
+
+# ================================
+# Logs
+# ================================
+logs/
+*.log
+gunicorn-error.log
+gunicorn-access.log
+
+# ================================
+# Editors
+# ================================
+# VS Code
+.vscode/
+.history/
+
+# PyCharm
+.idea/
+*.iml
+
+# ================================
+# Docker & containers
+# ================================
+# Container build cache / volumes mapping
+__docker__
+docker-data/
+pg_data/
+certbot/
+letsencrypt/
+certbot_www/
+
+# Ignore compiled files from build systems
+bin/
+build/
+dist/
+
+# ================================
+# System files
+# ================================
+.DS_Store
+Thumbs.db
