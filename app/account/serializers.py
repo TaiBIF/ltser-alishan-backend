@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db.models import Q
+from .models import UserAuthProfile
 
 User = get_user_model()
 
@@ -47,12 +48,18 @@ class RegisterSerializer(serializers.Serializer):
     password2 = serializers.CharField(write_only=True, style={"input_type": "password"})
 
     def validate_email(self, value):
-        # 確保 email 唯一
-        if User.objects.filter(
-            Q(email__iexact=value) | Q(username__iexact=value)
-        ).exists():
+        value = value.strip().lower()
 
-            raise serializers.ValidationError("此 Email 已被使用")
+        # 同一個 email 只允許一個帳號（不區分密碼/Google）
+        user = User.objects.filter(
+            Q(email__iexact=value) | Q(username__iexact=value)
+        ).first()
+
+        if user:
+            raise serializers.ValidationError(
+                "此 Email 已註冊，請直接登入，或使用「忘記密碼」重設密碼。"
+            )
+
         return value
 
     def validate(self, attrs):
@@ -62,7 +69,6 @@ class RegisterSerializer(serializers.Serializer):
         try:
             validate_password(attrs["password"])
         except serializers.ValidationError as e:
-            # e.messages 是 list
             raise serializers.ValidationError({"password": e.messages})
         return attrs
 
@@ -71,11 +77,13 @@ class RegisterSerializer(serializers.Serializer):
         email = validated_data["email"].strip().lower()
         password = validated_data["password"]
 
-        # 這裡用 email 當 username，避免改自訂 UserModel 的大工程
         user = User.objects.create_user(
-            username=email,
+            username=email,  # email 直接當作 username
             email=email,
             password=password,
-            first_name=name,  # 若你有 full_name 欄位可寫入別處
+            first_name=name,  # name 直接放到 first_name 中不拆分
         )
+
+        UserAuthProfile.objects.get_or_create(user=user)
+
         return user

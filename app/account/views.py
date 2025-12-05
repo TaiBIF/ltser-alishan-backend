@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
+from .models import UserAuthProfile
 from .serializers import RegisterSerializer, EmailTokenObtainPairSerializer
 
 
@@ -36,8 +38,12 @@ class GoogleLoginView(APIView):
     前端丟 Google ID token (credential) 進來，
     這裡負責：
     1. 驗證 token 是否有效
-    2. 用 email 找/建 user
+    2. 用 email 找/建 user（同一個 email 只會有一個 user）
     3. 發 JWT access / refresh 回前端
+
+    策略：
+    - 如果這個 email 已經註冊（一般註冊或之前用 Google 建立），
+      就直接登入同一個 User → 同一個帳號可以同時用密碼 & Google 登入。
     """
 
     permission_classes = [permissions.AllowAny]
@@ -82,10 +88,13 @@ class GoogleLoginView(APIView):
 
         email = email.strip().lower()
 
-        # 找看看是否已有此 email 的 user
-        user = User.objects.filter(email__iexact=email).first()
+        # 用 email 找既有 user
+        user = User.objects.filter(
+            Q(email__iexact=email) | Q(username__iexact=email)
+        ).first()
 
         # 沒有就建立一個 user（用 email 當 username）
+        created_by_google = False
         if not user:
             user = User.objects.create_user(
                 username=email,
@@ -93,6 +102,21 @@ class GoogleLoginView(APIView):
                 password=User.objects.make_random_password(),
                 first_name=name,
             )
+            created_by_google = True
+
+        # 更新 / 建立這個使用者的 auth_profile
+        profile, _ = UserAuthProfile.objects.get_or_create(user=user)
+
+        # 只要曾經是用 Google 建立的，就標記 True（之後不會改回 False）
+        if created_by_google and not profile.is_google_created:
+            profile.is_google_created = True
+
+        # 記錄 Google 的 sub（只有 Google 會給的唯一 ID）
+        sub = idinfo.get("sub")
+        if sub and profile.google_sub != sub:
+            profile.google_sub = sub
+
+        profile.save()
 
         # 發 SimpleJWT token
         refresh = RefreshToken.for_user(user)
