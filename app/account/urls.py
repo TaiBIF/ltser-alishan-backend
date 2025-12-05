@@ -1,6 +1,7 @@
 from django.urls import path
-from .views import RegisterView
+from .views import RegisterView, GoogleLoginView
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="register"),
+    path("auth/google-login/", GoogleLoginView.as_view(), name="google-login"),
 ]
