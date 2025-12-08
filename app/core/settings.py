@@ -150,7 +150,20 @@ REST_FRAMEWORK = {
 }
 
 
-SWAGGER_SETTINGS = {}
+SWAGGER_SETTINGS = {
+    "SECURITY_DEFINITIONS": (
+        {}
+        if DEBUG
+        else {
+            "Bearer": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header",
+                "description": "Bearer <access token>",
+            }
+        }
+    ),
+}
 
 from datetime import timedelta
 
