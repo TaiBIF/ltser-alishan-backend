@@ -97,6 +97,12 @@ class UserMeSerializer(serializers.ModelSerializer):
         fields = ["username", "first_name", "role"]
         read_only_fields = ["username"]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        profile = getattr(instance, "auth_profile", None)
+        data["role"] = getattr(profile, "role", "") if profile else ""
+        return data
+
     def update(self, instance, validated_data):
         role = validated_data.pop("role", None)
 
