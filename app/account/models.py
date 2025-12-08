@@ -13,6 +13,7 @@ class UserAuthProfile(models.Model):
 
     # 記錄 Google 的 sub（user 的唯一 ID）
     google_sub = models.CharField(max_length=255, blank=True, null=True)
+    role = models.CharField(max_length=255, blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

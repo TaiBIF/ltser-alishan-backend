@@ -90,7 +90,24 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class UserMeSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = User
-        fields = ["id", "username", "first_name"]
-        read_only_fields = ["id", "username"]
+        fields = ["username", "first_name", "role"]
+        read_only_fields = ["username"]
+
+    def update(self, instance, validated_data):
+        role = validated_data.pop("role", None)
+
+        # 先更新 User 本體欄位
+        instance = super().update(instance, validated_data)
+
+        # 再更新 Auth Profile.role
+        profile = getattr(instance, "auth_profile", None)
+        if profile:
+            if role is not None:
+                profile.role = role
+                profile.save()
+
+        return instance
