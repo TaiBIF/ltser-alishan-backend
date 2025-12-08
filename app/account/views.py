@@ -12,7 +12,11 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
 from .models import UserAuthProfile
-from .serializers import RegisterSerializer, EmailTokenObtainPairSerializer
+from .serializers import (
+    RegisterSerializer,
+    EmailTokenObtainPairSerializer,
+    UserMeSerializer,
+)
 
 
 User = get_user_model()
@@ -129,3 +133,24 @@ class GoogleLoginView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class UserMeView(APIView):
+    """
+    目前登入使用者資訊：
+    - GET  /api/user/me/   取得個人資料
+    - PATCH / PUT          更新個人資料（帳號、姓名等）
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserMeSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        serializer = UserMeSerializer(request.user, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
