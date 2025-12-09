@@ -1,6 +1,10 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -16,6 +20,8 @@ from .serializers import (
     RegisterSerializer,
     EmailTokenObtainPairSerializer,
     UserMeSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
 )
 
 
@@ -154,3 +160,54 @@ class UserMeView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            # 即使不存在也回傳 200，避免讓人試 email 存不存在
+            return Response(
+                {"detail": "如果帳號存在，我們已寄出重設密碼信件。"},
+                status=status.HTTP_200_OK,
+            )
+
+        # 產生 token 與 uid
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        # 組前端重設密碼頁面的 URL
+        reset_url = (
+            f"{settings.FRONTEND_BASE_URL}/reset-password?uid={uid}&token={token}"
+        )
+
+        # 寄出信件
+        subject = "[臺灣長期社會生態核心觀測 阿里山站] 重設密碼通知"
+        message = f"您好，\n\n請點擊以下連結重設您的密碼：\n{reset_url}\n\n如果您沒有申請重設密碼，請忽略本信。"
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+
+        send_mail(subject, message, from_email, [user.email])
+
+        return Response(
+            {"detail": "如果帳號存在，我們已寄出重設密碼信件。"},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"detail": "密碼已成功重設，請重新登入。"}, status=status.HTTP_200_OK
+        )

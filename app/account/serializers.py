@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.utils.http import urlsafe_base64_decode
+from django.utils.encoding import force_str
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db.models import Q
@@ -117,3 +119,45 @@ class UserMeSerializer(serializers.ModelSerializer):
                 profile.save()
 
         return instance
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    # 不檢查 email 是否存在，避免暴露帳號
+    def validate_email(self, value):
+        return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        uid = attrs.get("uid")
+        token = attrs.get("token")
+        password = attrs.get("password")
+
+        try:
+            uid_int = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=uid_int)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({"uid": "重設連結無效，請重新申請。"})
+
+        from django.contrib.auth.tokens import default_token_generator
+
+        if not default_token_generator.check_token(user, token):
+            raise serializers.ValidationError(
+                {"token": "重設連結已失效或不正確，請重新申請。"}
+            )
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data["user"]
+        password = self.validated_data["password"]
+        user.set_password(password)
+        user.save()
+        return user
