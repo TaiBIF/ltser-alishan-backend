@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
     web:
         build: .
@@ -57,9 +55,11 @@ services:
         build: .
         volumes:
             - ./app:/app
+            - static_volume:/app/static
+            - media_volume:/app/media
         env_file:
             - .env
-        command: celery -A core worker --loglevel=info
+        command: celery -A core worker --beat --loglevel=info
         depends_on:
             db:
                 condition: service_healthy

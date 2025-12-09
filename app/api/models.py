@@ -891,3 +891,50 @@ class Weather(models.Model):
 
     def __str__(self):
         return self.dataID
+
+
+class DownloadRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_PROCESSING = "processing"
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+    STATUS_EXPIRED = "expired"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "待處理"),
+        (STATUS_PROCESSING, "處理中"),
+        (STATUS_DONE, "已完成"),
+        (STATUS_FAILED, "失敗"),
+        (STATUS_EXPIRED, "已過期"),
+    ]
+
+    email = models.EmailField()
+    first_name = models.CharField(max_length=100, blank=True)
+    role = models.CharField(max_length=100, blank=True)
+    reason = models.TextField(blank=True)
+
+    # 從前端帶來的條件
+    location_id = models.CharField(max_length=100)
+    location_name = models.CharField(max_length=255, blank=True)
+    year = models.IntegerField()
+    items = models.JSONField(default=list)
+
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    zip_path = models.CharField(max_length=500, blank=True)
+    error_message = models.TextField(blank=True)
+
+    email_sent = models.BooleanField(default=False)
+    email_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "api_download_request"
+        verbose_name = "DownloadRequest"
+        verbose_name_plural = "DownloadRequests"
+
+    def __str__(self):
+        return f"{self.email} - {self.location_id} - {self.year}"

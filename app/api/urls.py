@@ -47,5 +47,7 @@ urlpatterns = [
     ),
     path("map/location/", location_map_list, name="map-loacation"),
     path("map/filter/", location_map_filter, name="map-filter"),
+    path("download/", request_download, name="request-download"),
+    path("download/file/<int:pk>/", download_file, name="download-file"),
     path("", include(router.urls)),
 ]

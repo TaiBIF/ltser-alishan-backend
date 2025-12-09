@@ -1,13 +1,16 @@
+import os
 from collections import defaultdict
 
 from core.base import BaseViewSet
 from django.core.cache import cache
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework import viewsets
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.http import FileResponse, Http404
 
 from django.db.models import Count, Avg, Sum
 from django.db.models.functions import TruncDate
@@ -19,6 +22,7 @@ from .models import *
 from .serializers import *
 from .filters import *
 from .utils.cache_keys import location_map_list_key, location_map_filter_key
+from .tasks import generate_download_zip
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -526,3 +530,87 @@ def location_map_filter(request):
     cache.set(cache_key, result, timeout=None)
 
     return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])  # 如不需要登入可拿掉
+def request_download(request):
+    """
+    建立下載申請，丟給 Celery 背景產 zip 檔並寄信
+    前端 body 預期：
+    {
+        "email": "...",
+        "first_name": "...",
+        "role": "...",
+        "reason": "...",
+        "location_id": "XXX",
+        "location_name": "某某樣站",
+        "year": 2023,
+        "items": ["植物物候", "氣象觀測"]  # 或者直接傳 code 也行
+    }
+    """
+    data = request.data
+
+    required_fields = [
+        "email",
+        "first_name",
+        "role",
+        "reason",
+        "location_id",
+        "year",
+        "items",
+    ]
+    for f in required_fields:
+        if f not in data:
+            return Response(
+                {"detail": f"缺少必填欄位：{f}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    try:
+        year = int(data["year"])
+    except (TypeError, ValueError):
+        return Response({"detail": "年份格式錯誤"}, status=status.HTTP_400_BAD_REQUEST)
+
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return Response(
+            {"detail": "觀測項目 items 必須為非空陣列"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    dl = DownloadRequest.objects.create(
+        email=data["email"],
+        first_name=data["first_name"],
+        role=data["role"],
+        reason=data["reason"],
+        location_id=data["location_id"],
+        location_name=data.get("location_name", ""),
+        year=year,
+        items=items,
+    )
+
+    # 丟給 celery 背景處理
+    generate_download_zip.delay(dl.id)
+
+    return Response(
+        {"message": "下載申請已建立", "request_id": dl.id},
+        status=status.HTTP_202_ACCEPTED,
+    )
+
+
+@api_view(["GET"])
+def download_file(request, pk: int):
+    try:
+        dl = DownloadRequest.objects.get(pk=pk)
+    except DownloadRequest.DoesNotExist:
+        raise Http404("下載請求不存在")
+
+    if not dl.zip_path or not os.path.exists(dl.zip_path):
+        raise Http404("檔案不存在或已被移除")
+
+    return FileResponse(
+        open(dl.zip_path, "rb"),
+        as_attachment=True,
+        filename=os.path.basename(dl.zip_path),
+    )
