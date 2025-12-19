@@ -646,7 +646,7 @@ def village_dynamics(request):
 
 @api_view(["GET"])
 def town_pyramid(request):
-    rows = cache.get(segis_cache_key("town_pyramid_rows"))
+    rows = cache.get(segis_cache_key("town_pyramid"))
     if not rows:
         return Response(
             {"detail": "資料尚未建立，請稍後再試"},
