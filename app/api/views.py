@@ -26,6 +26,7 @@ from .utils.cache_keys import (
     location_map_filter_key,
     segis_cache_key,
 )
+from .utils.transform_segis_data import transform_pyramid
 
 from .tasks import generate_download_zip
 
@@ -645,13 +646,20 @@ def village_dynamics(request):
 
 @api_view(["GET"])
 def town_pyramid(request):
-    payload = cache.get(segis_cache_key("town_pyramid"))
-    if not payload:
-        return Response({"detail": "資料尚未建立，請稍後再試"}, status=503)
+    rows = cache.get(segis_cache_key("town_pyramid_rows"))
+    if not rows:
+        return Response(
+            {"detail": "資料尚未建立，請稍後再試"},
+            status=503,
+        )
 
     year = request.query_params.get("year")
-    if year and str(year).isdigit():
-        payload = {**payload, "selected_year": int(year)}
+    year = int(year) if year and str(year).isdigit() else None
+
+    payload = transform_pyramid(
+        rows,
+        selected_year=year,
+    )
 
     return Response(payload, status=200)
 

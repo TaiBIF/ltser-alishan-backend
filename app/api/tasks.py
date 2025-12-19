@@ -298,9 +298,7 @@ def cache_town_pyramid():
     latest_time = get_latest_time_list("town", query_type="pyramid")
     rows = get_population_data("town", latest_time, query_type="pyramid")
 
-    payload = transform_pyramid(rows, selected_year=None)
-
-    cache.set(segis_cache_key("town_pyramid"), payload, timeout=None)
+    cache.set(segis_cache_key("town_pyramid"), rows, timeout=None)
 
 
 @shared_task
