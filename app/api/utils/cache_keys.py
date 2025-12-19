@@ -4,3 +4,7 @@ def location_map_list_key(year: str | None, item: str | None) -> str:
 
 def location_map_filter_key() -> str:
     return "location_map_filter"
+
+
+def segis_cache_key(name):
+    return f"segis:{name}"

@@ -21,7 +21,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import *
 from .serializers import *
 from .filters import *
-from .utils.cache_keys import location_map_list_key, location_map_filter_key
+from .utils.cache_keys import (
+    location_map_list_key,
+    location_map_filter_key,
+    segis_cache_key,
+)
+
 from .tasks import generate_download_zip
 
 from drf_yasg.utils import swagger_auto_schema
@@ -614,3 +619,49 @@ def download_file(request, pk: int):
         as_attachment=True,
         filename=os.path.basename(dl.zip_path),
     )
+
+
+@api_view(["GET"])
+def village_population(request):
+    payload = cache.get(segis_cache_key("village_population"))
+    if not payload:
+        return Response(
+            {"detail": "資料尚未建立，請稍後再試"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def village_dynamics(request):
+    payload = cache.get(segis_cache_key("village_dynamics"))
+    if not payload:
+        return Response(
+            {"detail": "資料尚未建立，請稍後再試"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def town_pyramid(request):
+    payload = cache.get(segis_cache_key("town_pyramid"))
+    if not payload:
+        return Response({"detail": "資料尚未建立，請稍後再試"}, status=503)
+
+    year = request.query_params.get("year")
+    if year and str(year).isdigit():
+        payload = {**payload, "selected_year": int(year)}
+
+    return Response(payload, status=200)
+
+
+@api_view(["GET"])
+def town_industry(request):
+    payload = cache.get(segis_cache_key("town_industry"))
+    if not payload:
+        return Response(
+            {"detail": "資料尚未建立，請稍後再試"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response(payload, status=status.HTTP_200_OK)

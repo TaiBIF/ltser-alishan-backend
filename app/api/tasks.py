@@ -11,7 +11,23 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.urls import reverse
 
-from .utils.cache_keys import location_map_list_key, location_map_filter_key
+from .utils.cache_keys import (
+    location_map_list_key,
+    location_map_filter_key,
+    segis_cache_key,
+)
+from .utils.transform_segis_data import (
+    transform_population,
+    transform_dynamics,
+    transform_pyramid,
+    transform_industry,
+)
+from .utils.call_segis import (
+    get_latest_time_list,
+    get_population_data,
+    get_industry_data,
+)
+
 from .models import Location, DownloadRequest
 from .serializers import LocationMapSerializer
 from .obs_config import OBS_CONFIG
@@ -242,3 +258,62 @@ def cleanup_old_zips(days: int = 7):
         "updated_rows": updated_rows,
         "threshold": threshold.isoformat(),
     }
+
+
+@shared_task
+def cache_village_population():
+    latest_time = get_latest_time_list("village", query_type="summary")
+    rows = get_population_data("village", latest_time, query_type="summary")
+
+    payload = transform_population(rows)
+
+    cache.set(
+        segis_cache_key("village_population"),
+        payload,
+        timeout=None,  # 由下一次 celery 覆蓋
+    )
+
+
+@shared_task
+def cache_village_dynamics():
+    pop_time = get_latest_time_list("village", query_type="summary")
+    idx_time = get_latest_time_list("village", query_type="index")
+    dyn_time = get_latest_time_list("village", query_type="dynamics")
+
+    population = get_population_data("village", pop_time, query_type="summary")
+    index = get_population_data("village", idx_time, query_type="index")
+    dynamics = get_population_data("village", dyn_time, query_type="dynamics")
+
+    payload = transform_dynamics(
+        population_rows=population,
+        index_rows=index,
+        dynamic_rows=dynamics,
+    )
+
+    cache.set(segis_cache_key("village_dynamics"), payload, timeout=None)
+
+
+@shared_task
+def cache_town_pyramid():
+    latest_time = get_latest_time_list("town", query_type="pyramid")
+    rows = get_population_data("town", latest_time, query_type="pyramid")
+
+    payload = transform_pyramid(rows, selected_year=None)
+
+    cache.set(segis_cache_key("town_pyramid"), payload, timeout=None)
+
+
+@shared_task
+def cache_town_industry():
+    ind_time = get_latest_time_list("town", query_type="industry")
+    live_time = get_latest_time_list("town", query_type="livestock")
+
+    industry = get_industry_data(ind_time, query_type="industry")
+    livestock = get_industry_data(live_time, query_type="livestock")
+
+    payload = transform_industry(
+        industry_rows=industry,
+        livestock_rows=livestock,
+    )
+
+    cache.set(segis_cache_key("town_industry"), payload, timeout=None)

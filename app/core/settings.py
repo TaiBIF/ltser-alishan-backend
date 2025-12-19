@@ -224,3 +224,7 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
 SITE_BASE_URL = os.environ.get("BACKEND_DOMAIN", "http://localhost:8000")
 FRONTEND_BASE_URL = "https://ltsertw-alishan.org"
+
+
+SEGIS_API_ID = os.getenv("SEGIS_API_ID")
+SEGIS_API_KEY = os.getenv("SEGIS_API_KEY")
