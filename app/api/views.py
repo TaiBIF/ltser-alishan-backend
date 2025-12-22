@@ -1,4 +1,5 @@
 import os
+import pytz
 from collections import defaultdict
 
 from core.base import BaseViewSet
@@ -11,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.http import FileResponse, Http404
+from django.utils import timezone
 
 from django.db.models import Count, Avg, Sum
 from django.db.models.functions import TruncDate
@@ -620,6 +622,49 @@ def download_file(request, pk: int):
         as_attachment=True,
         filename=os.path.basename(dl.zip_path),
     )
+
+
+EMAIL_PARAM = openapi.Parameter(
+    name="email",
+    in_=openapi.IN_QUERY,
+    description="使用者 Email",
+    type=openapi.TYPE_STRING,
+    required=True,
+)
+
+
+@swagger_auto_schema(
+    method="get",
+    operation_description=(
+        "依 email 取得下載紀錄。\n" "- 必填 email\n" "- 回傳欄位：id、items、created_at"
+    ),
+    manual_parameters=[EMAIL_PARAM],
+    responses={
+        200: openapi.Response("成功"),
+        400: openapi.Response("缺少 email"),
+    },
+)
+@api_view(["GET"])
+def download_history(request):
+    taipei_tz = pytz.timezone("Asia/Taipei")
+
+    email = request.query_params.get("email")
+    download_qs = DownloadRequest.objects.filter(email=email).order_by("-created_at")
+
+    results = []
+
+    for obj in download_qs:
+        local_time = timezone.localtime(obj.created_at, taipei_tz)
+
+        results.append(
+            {
+                "id": obj.id,
+                "items": obj.items,
+                "created_at": local_time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+
+    return Response({"results": results})
 
 
 @api_view(["GET"])

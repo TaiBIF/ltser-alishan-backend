@@ -49,6 +49,7 @@ urlpatterns = [
     path("map/filter/", location_map_filter, name="map-filter"),
     path("download/", request_download, name="request-download"),
     path("download/file/<int:pk>/", download_file, name="download-file"),
+    path("download/history/", download_history, name="download-history"),
     path("segis/village-population/", village_population, name="village-population"),
     path("segis/village-dynamics/", village_dynamics, name="village-dynamics"),
     path("segis/town-pyramid/", town_pyramid, name="town-pyramid"),
