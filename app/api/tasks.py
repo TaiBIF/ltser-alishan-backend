@@ -27,6 +27,7 @@ from .utils.call_segis import (
     get_population_data,
     get_industry_data,
 )
+from .utils.download import build_obs_maps
 
 from .models import Location, DownloadRequest
 from .serializers import LocationMapSerializer
@@ -85,10 +86,9 @@ def rebuild_location_map_list_cache():
 
 
 @shared_task
-def generate_download_zip(download_request_id: int):
+def generate_download_zip(download_request_id):
     dl = DownloadRequest.objects.get(id=download_request_id)
 
-    # 避免被重複處理
     if dl.status not in [DownloadRequest.STATUS_PENDING, DownloadRequest.STATUS_FAILED]:
         return
 
@@ -96,25 +96,22 @@ def generate_download_zip(download_request_id: int):
     dl.save(update_fields=["status"])
 
     try:
-        # 1. 把前端的 label 轉成 code
-        obs_label_to_code = {cfg["label"]: code for code, cfg in OBS_CONFIG.items()}
+        label_to_code, _ = build_obs_maps()
 
-        requested_labels = dl.items  # ["植物物候", "氣象觀測"]
-        # 可以允許前端直接傳 code，所以有兩種 mapping
+        requested_labels = dl.items or []
+        if not isinstance(requested_labels, list) or not requested_labels:
+            raise ValueError("items 必須為非空陣列")
+
+        # dl.items 已統一存 label
         obs_codes = []
-        for item in requested_labels:
-            if item in OBS_CONFIG:  # 直接是 code
-                obs_codes.append(item)
-            elif item in obs_label_to_code:  # 中文 label
-                obs_codes.append(obs_label_to_code[item])
+        for label in requested_labels:
+            if isinstance(label, str) and label in label_to_code:
+                obs_codes.append(label_to_code[label])
 
-        # 去掉不存在的的觀測項目
-        obs_codes = [c for c in obs_codes if c in OBS_CONFIG]
-
+        obs_codes = [c for c in dict.fromkeys(obs_codes) if c in OBS_CONFIG]
         if not obs_codes:
-            raise ValueError("沒有有效的觀測項目代碼可供匯出")
+            raise ValueError("沒有有效的觀測項目可供匯出（items 與 OBS_CONFIG 不一致）")
 
-        # 2. 準備輸出目錄
         base_dir = getattr(settings, "MEDIA_ROOT", None)
         if not base_dir:
             raise ValueError("MEDIA_ROOT 尚未設定")
@@ -122,66 +119,127 @@ def generate_download_zip(download_request_id: int):
         download_dir = os.path.join(base_dir, "downloads", str(dl.id))
         os.makedirs(download_dir, exist_ok=True)
 
-        # 3. 對每一個觀測項目輸出一個 CSV
         csv_files = []
 
-        for code in obs_codes:
+        # selected：樣站 + 年份 + 多個觀測項目 => 每一個觀測項目產生各自的 CSV
+        if dl.mode == DownloadRequest.MODE_SELECTED:
+            if not dl.location_id or not dl.year:
+                raise ValueError("selected 模式必須提供 location_id 與 year")
+
+            for code in obs_codes:
+                cfg = OBS_CONFIG[code]
+                model = cfg["model"]
+                date_field = cfg["date_field"]
+
+                qs = model.objects.filter(locationID=dl.location_id)
+                qs = qs.filter(**{f"{date_field}__year": dl.year})
+
+                if not qs.exists():
+                    continue
+
+                filename = f"{code}_{dl.year}_{dl.location_id}.csv"
+                file_path = os.path.join(download_dir, filename)
+
+                field_names = [f.name for f in model._meta.fields]
+
+                with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(field_names)
+                    for obj in qs.iterator():
+                        writer.writerow([getattr(obj, field) for field in field_names])
+
+                csv_files.append((filename, file_path))
+
+        # item_all：單一觀測項目 => 產生單一個大 CSV，包含全樣站全年度
+        elif dl.mode == DownloadRequest.MODE_ITEM_ALL:
+            if len(obs_codes) != 1:
+                raise ValueError("item_all 模式 items 只能包含 1 個項目")
+
+            code = obs_codes[0]
             cfg = OBS_CONFIG[code]
             model = cfg["model"]
-            date_field = cfg["date_field"]
 
-            qs = model.objects.filter(locationID=dl.location_id)
-            qs = qs.filter(**{f"{date_field}__year": dl.year})
-
+            qs = model.objects.all()
             if not qs.exists():
-                # 沒資料就跳過，不生成檔案
-                continue
+                raise ValueError(f"{code} 全域資料為空，未產生任何 CSV 檔案")
 
-            # 檔名，例如 plantphenology_2023_SIM.csv
-            filename = f"{code}_{dl.year}_{dl.location_id}.csv"
+            filename = f"{code}_ALL_YEARS_ALL_LOCATIONS.csv"
             file_path = os.path.join(download_dir, filename)
 
-            # 取得所有普通欄位輸出
             field_names = [f.name for f in model._meta.fields]
 
             with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
-                # 寫欄位名稱
                 writer.writerow(field_names)
-                # 寫每筆資料
-                for obj in qs:
-                    row = [getattr(obj, field) for field in field_names]
-                    writer.writerow(row)
+                for obj in qs.iterator():
+                    writer.writerow([getattr(obj, field) for field in field_names])
 
             csv_files.append((filename, file_path))
+
+        # catalog：單一觀測項目 => 用 scientificName 欄位產生去重複名錄
+        elif dl.mode == DownloadRequest.MODE_CATALOG:
+            if len(obs_codes) != 1:
+                raise ValueError("catalog 模式 items 只能包含 1 個項目")
+
+            code = obs_codes[0]
+            cfg = OBS_CONFIG[code]
+            model = cfg["model"]
+
+            field_names = [f.name for f in model._meta.fields]
+            if "scientificName" not in field_names:
+                raise ValueError(
+                    f"{code} 的資料 model 沒有 scientificName 欄位，無法產生名錄"
+                )
+
+            names_qs = (
+                model.objects.exclude(scientificName__isnull=True)
+                .exclude(scientificName__exact="")
+                .values_list("scientificName", flat=True)
+                .distinct()
+                .order_by("scientificName")
+            )
+
+            names = list(names_qs)
+            if not names:
+                raise ValueError(f"{code} 名錄為空，未產生任何 CSV 檔案")
+
+            filename = f"{code}_CATALOG.csv"
+            file_path = os.path.join(download_dir, filename)
+
+            with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["scientificName"])
+                for n in names:
+                    writer.writerow([n])
+
+            csv_files.append((filename, file_path))
+
+        else:
+            raise ValueError(f"未知 mode: {dl.mode}")
 
         if not csv_files:
             raise ValueError("符合條件的觀測資料為空，未產生任何 CSV 檔案")
 
-        # 4. 壓縮成一個 zip
         zip_filename = f"download_{dl.id}.zip"
         zip_path = os.path.join(download_dir, zip_filename)
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for filename, file_path in csv_files:
-                # 第二個參數是壓縮檔內的檔名
                 zf.write(file_path, arcname=filename)
 
-        # 壓縮完成後，刪掉所有 CSV，只保留 zip
         for _, file_path in csv_files:
             try:
                 os.remove(file_path)
             except OSError:
                 pass
 
-        # 5. 更新 DownloadRequest 狀態與 zip 路徑
         dl.status = DownloadRequest.STATUS_DONE
         dl.zip_path = zip_path
         dl.finished_at = datetime.now()
         dl.error_message = ""
         dl.save(update_fields=["status", "zip_path", "finished_at", "error_message"])
 
-        # 6. 寄信給申請者
+        # 寄信
         try:
             site_base = settings.SITE_BASE_URL.rstrip("/")
             download_url = f"{site_base}{reverse('download-file', args=[dl.id])}"
@@ -195,11 +253,10 @@ def generate_download_zip(download_request_id: int):
                 "此信件為系統自動寄出，請勿直接回覆。"
             )
 
-            from_email = settings.DEFAULT_FROM_EMAIL
             email = EmailMessage(
                 subject,
                 message,
-                from_email=from_email,
+                from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[dl.email],
             )
             email.send(fail_silently=False)

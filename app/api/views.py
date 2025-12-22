@@ -29,6 +29,7 @@ from .utils.cache_keys import (
     segis_cache_key,
 )
 from .utils.transform_segis_data import transform_pyramid
+from .utils.download import normalize_items_to_labels
 
 from .tasks import generate_download_zip
 
@@ -541,64 +542,95 @@ def location_map_filter(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])  # 如不需要登入可拿掉
+@permission_classes([IsAuthenticated])
 def request_download(request):
-    """
-    建立下載申請，丟給 Celery 背景產 zip 檔並寄信
-    前端 body 預期：
-    {
-        "email": "...",
-        "first_name": "...",
-        "role": "...",
-        "reason": "...",
-        "location_id": "XXX",
-        "location_name": "某某樣站",
-        "year": 2023,
-        "items": ["植物物候", "氣象觀測"]  # 或者直接傳 code 也行
-    }
-    """
-    data = request.data
+    data = request.data or {}
 
-    required_fields = [
-        "email",
-        "first_name",
-        "role",
-        "reason",
-        "location_id",
-        "year",
-        "items",
-    ]
-    for f in required_fields:
-        if f not in data:
+    # 共通必填
+    required_common = ["email", "first_name", "role", "reason"]
+    for f in required_common:
+        if not data.get(f):
             return Response(
                 {"detail": f"缺少必填欄位：{f}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    try:
-        year = int(data["year"])
-    except (TypeError, ValueError):
-        return Response({"detail": "年份格式錯誤"}, status=status.HTTP_400_BAD_REQUEST)
-
-    items = data.get("items") or []
-    if not isinstance(items, list) or not items:
+    # mode
+    mode = data.get("mode") or DownloadRequest.MODE_SELECTED
+    valid_modes = {m[0] for m in DownloadRequest.MODE_CHOICES}
+    if mode not in valid_modes:
         return Response(
-            {"detail": "觀測項目 items 必須為非空陣列"},
+            {"detail": f"mode 不合法，必須為：{', '.join(sorted(valid_modes))}"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # items 不管前端傳 code 或 label，都轉成 label 存進 DB
+    raw_items = data.get("items") or []
+    items = normalize_items_to_labels(raw_items)
+    if not items:
+        return Response(
+            {
+                "detail": "觀測項目 items 必須為非空陣列，且需為有效項目（code 或 label）"
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 依 mode 決定條件欄位
+    location_id = (data.get("location_id") or "").strip()
+    location_name = (data.get("location_name") or "").strip()
+    year = data.get("year", None)
+
+    if mode == DownloadRequest.MODE_SELECTED:
+        if not location_id:
+            return Response(
+                {"detail": "selected 模式缺少必填欄位：location_id"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if year is None or str(year).strip() == "":
+            return Response(
+                {"detail": "selected 模式缺少必填欄位：year"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            year = int(year)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "年份格式錯誤"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    elif mode == DownloadRequest.MODE_ITEM_ALL:
+        if len(items) != 1:
+            return Response(
+                {"detail": "item_all 模式 items 只能包含 1 個項目"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        year = None
+        location_id = ""
+        location_name = ""
+
+    elif mode == DownloadRequest.MODE_CATALOG:
+        if len(items) != 1:
+            return Response(
+                {"detail": "catalog 模式 items 只能包含 1 個項目"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        year = None
+        location_id = ""
+        location_name = ""
+
     dl = DownloadRequest.objects.create(
         email=data["email"],
-        first_name=data["first_name"],
-        role=data["role"],
-        reason=data["reason"],
-        location_id=data["location_id"],
-        location_name=data.get("location_name", ""),
+        first_name=data.get("first_name", ""),
+        role=data.get("role", ""),
+        reason=data.get("reason", ""),
+        mode=mode,
+        location_id=location_id,
+        location_name=location_name,
         year=year,
         items=items,
     )
 
-    # 丟給 celery 背景處理
     generate_download_zip.delay(dl.id)
 
     return Response(

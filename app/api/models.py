@@ -894,6 +894,16 @@ class Weather(models.Model):
 
 
 class DownloadRequest(models.Model):
+    MODE_SELECTED = "selected"
+    MODE_ITEM_ALL = "item_all"
+    MODE_CATALOG = "catalog"
+
+    MODE_CHOICES = [
+        (MODE_SELECTED, "指定項目下載"),
+        (MODE_ITEM_ALL, "單一項目全域下載"),
+        (MODE_CATALOG, "名錄下載"),
+    ]
+
     STATUS_PENDING = "pending"
     STATUS_PROCESSING = "processing"
     STATUS_DONE = "done"
@@ -913,10 +923,17 @@ class DownloadRequest(models.Model):
     role = models.CharField(max_length=100, blank=True)
     reason = models.TextField(blank=True)
 
+    # 下載方式
+    mode = models.CharField(
+        max_length=20,
+        choices=MODE_CHOICES,
+        default=MODE_SELECTED,
+    )
+
     # 從前端帶來的條件
-    location_id = models.CharField(max_length=100)
-    location_name = models.CharField(max_length=255, blank=True)
-    year = models.IntegerField()
+    location_id = models.CharField(max_length=100, blank=True, null=True)
+    location_name = models.CharField(max_length=255, blank=True, null=True)
+    year = models.IntegerField(blank=True, null=True)
     items = models.JSONField(default=list)
 
     status = models.CharField(
@@ -937,4 +954,4 @@ class DownloadRequest(models.Model):
         verbose_name_plural = "DownloadRequests"
 
     def __str__(self):
-        return f"{self.email} - {self.location_id} - {self.year}"
+        return f"{self.email} - {self.items} - {self.mode}"
