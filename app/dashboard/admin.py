@@ -168,3 +168,30 @@ class FormLinkAdmin(admin.ModelAdmin):
     list_filter = ("title",)
     search_fields = ("title",)
     ordering = ("id",)
+
+
+@admin.register(Contact)
+class ContactAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "role",
+        "university",
+        "sort_order",
+    )
+
+    list_filter = (
+        "university",
+        "role",
+    )
+
+    search_fields = (
+        "name",
+        "role",
+        "mail",
+        "university",
+        "department",
+        "position",
+    )
+
+    ordering = ("sort_order", "id")

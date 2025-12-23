@@ -178,3 +178,29 @@ class FormLinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = FormLink
         fields = ["id", "title", "link", "file", "created_at"]
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Contact
+        fields = [
+            "id",
+            "name",
+            "role",
+            "university",
+            "department",
+            "position",
+            "mail",
+            "image",
+            "sort_order",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_image(self, obj):
+        if not obj.image:
+            return None
+        request = self.context.get("request")
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url

@@ -1,5 +1,7 @@
 from django.db import models
+from django.db.models import Max
 from django.core.exceptions import ValidationError
+from django.core.validators import EmailValidator
 
 
 class Introduction(models.Model):
@@ -282,3 +284,51 @@ class FormLink(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Contact(models.Model):
+    name = models.CharField(max_length=100)
+    role = models.CharField(max_length=120, blank=True)
+
+    university = models.CharField(max_length=200, blank=True)
+    department = models.CharField(max_length=200, blank=True)
+    position = models.CharField(max_length=200, blank=True)
+
+    mail = models.EmailField(
+        max_length=254,
+        validators=[EmailValidator()],
+        unique=True,
+        blank=True,
+        null=True,
+    )
+    image = models.ImageField(
+        upload_to="contactsImage/",
+        blank=True,
+        null=True,
+    )
+
+    sort_order = models.PositiveIntegerField(
+        default=0, help_text="計劃主持人預設放在 0"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "dashboard_contact"
+        verbose_name = "Contact"
+        verbose_name_plural = "Contacts"
+
+    def save(self, *args, **kwargs):
+        # 新建立且沒有特別指定排序
+        if self.pk is None and self.sort_order == 0:
+            max_order = Contact.objects.aggregate(max_order=Max("sort_order"))[
+                "max_order"
+            ]
+
+            self.sort_order = (max_order or 0) + 1
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name

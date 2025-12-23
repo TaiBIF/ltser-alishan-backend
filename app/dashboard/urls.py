@@ -13,6 +13,7 @@ router.register(r"faq-types", FaqTypeViewSet, basename="faq-type")
 router.register(r"literature", LiteratureViewSet, basename="literature")
 router.register(r"literature-types", LiteratureTypeViewSet, basename="literature-type")
 router.register(r"form-link", FormLinkViewSet, basename="form-link")
+router.register(r"contact", ContactViewSet, basename="contact")
 
 urlpatterns = [
     path("", include(router.urls)),

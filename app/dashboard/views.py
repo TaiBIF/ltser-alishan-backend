@@ -337,3 +337,9 @@ class FormLinkViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = FormLink.objects.all()
     serializer_class = FormLinkSerializer
     pagination_class = None
+
+
+class ContactViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Contact.objects.all()
+    serializer_class = ContactSerializer
+    pagination_class = None
