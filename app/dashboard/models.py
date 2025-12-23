@@ -319,16 +319,5 @@ class Contact(models.Model):
         verbose_name = "Contact"
         verbose_name_plural = "Contacts"
 
-    def save(self, *args, **kwargs):
-        # 新建立且沒有特別指定排序
-        if self.pk is None and self.sort_order == 0:
-            max_order = Contact.objects.aggregate(max_order=Max("sort_order"))[
-                "max_order"
-            ]
-
-            self.sort_order = (max_order or 0) + 1
-
-        super().save(*args, **kwargs)
-
     def __str__(self):
         return self.name
