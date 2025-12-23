@@ -160,3 +160,11 @@ class LiteratureTypeAdmin(admin.ModelAdmin):
     list_filter = ("name",)
     search_fields = ("key", "name")
     ordering = ("id",)
+
+
+@admin.register(FormLink)
+class FormLinkAdmin(admin.ModelAdmin):
+    list_display = ("id", "title")
+    list_filter = ("title",)
+    search_fields = ("title",)
+    ordering = ("id",)

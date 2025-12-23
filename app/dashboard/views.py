@@ -331,3 +331,9 @@ class LiteratureViewSet(viewsets.ModelViewSet):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class FormLinkViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = FormLink.objects.all()
+    serializer_class = FormLinkSerializer
+    pagination_class = None

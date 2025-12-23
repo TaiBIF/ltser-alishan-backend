@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 
 
 class Introduction(models.Model):
@@ -231,3 +232,53 @@ class Literature(models.Model):
     def __str__(self):
         type_names = ", ".join(t.name for t in self.types.all())
         return f"{type_names} - {self.title} - {self.date}"
+
+
+class FormLink(models.Model):
+    title = models.CharField(max_length=255)
+    link = models.URLField(blank=True, null=True)
+    file = models.FileField(upload_to="forms/", blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "dashboard_formlink"
+        verbose_name = "FormLink"
+        verbose_name_plural = "FormLinks"
+
+    def clean(self):
+        """
+        link / file 必須「剛好填一個」：
+        - 都沒填：不行
+        - 都有填：不行
+        """
+        super().clean()
+        has_link = bool(self.link)
+        has_file = bool(self.file)
+
+        if has_link == has_file:  # True/True 或 False/False 都不行
+            raise ValidationError(
+                ("請在 link 與 file 之間擇一填寫（不可都填或都不填）。")
+            )
+
+    def save(self, *args, **kwargs):
+        # 確保透過 model save 也會跑驗證（包含 admin / API）
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    @property
+    def is_link(self):
+        return bool(self.link)
+
+    @property
+    def url(self):
+        """
+        給前端用：如果是 link 回傳 link；如果是 file 回傳 file.url
+        """
+        if self.link:
+            return self.link
+        return self.file.url if self.file else ""
+
+    def __str__(self):
+        return self.title

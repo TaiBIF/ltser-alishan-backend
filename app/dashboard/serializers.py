@@ -172,3 +172,9 @@ class LiteratureSerializer(serializers.ModelSerializer):
 
     def get_published_year(self, obj):
         return obj.date.year if obj.date else None
+
+
+class FormLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FormLink
+        fields = ["id", "title", "link", "file", "created_at"]
