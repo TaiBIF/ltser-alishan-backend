@@ -45,6 +45,11 @@ urlpatterns = [
         WeatherChartView.as_view(),
         name="weather-chart",
     ),
+    path(
+        "<str:model>/filter-options/",
+        observation_filter_options,
+        name="observation-filter-options",
+    ),
     path("map/location/", location_map_list, name="map-loacation"),
     path("map/filter/", location_map_filter, name="map-filter"),
     path("download/", request_download, name="request-download"),

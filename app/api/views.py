@@ -510,6 +510,73 @@ def location_map_list(request):
 
 
 @api_view(["GET"])
+def observation_filter_options(request, model):
+    """
+    Return distinct filter options for one observation model field.
+    """
+    cfg = OBS_CONFIG.get(model)
+    if not cfg:
+        raise NotFound({"detail": f"未知的 model: {model}"})
+
+    field_name = request.query_params.get("field")
+    if not field_name:
+        raise ValidationError({"detail": "請提供 ?field=<field_name> 參數"})
+
+    try:
+        limit = int(request.query_params.get("limit", 50))
+    except (TypeError, ValueError):
+        raise ValidationError({"detail": "limit 必須是整數"})
+    limit = max(1, min(limit, 500))
+
+    q = (request.query_params.get("q") or "").strip()
+    datafield_model = cfg["datafield_model"]
+    data_field = datafield_model.objects.filter(
+        field_name=field_name,
+        show_at_filter=True,
+        filter_widget__in=["select", "combobox"],
+    ).first()
+    if not data_field:
+        raise NotFound({"detail": f"此欄位未開放下拉選項: {field_name}"})
+
+    data_model = cfg["model"]
+    try:
+        model_field = data_model._meta.get_field(field_name)
+    except Exception:
+        raise NotFound({"detail": f"資料模型不存在此欄位: {field_name}"})
+
+    cache_key = f"filter_options:{model}:{field_name}:{q}:{limit}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached, status=status.HTTP_200_OK)
+
+    qs = data_model.objects.exclude(**{f"{field_name}__isnull": True})
+
+    if model_field.get_internal_type() in ["CharField", "TextField"]:
+        qs = qs.exclude(**{field_name: ""})
+        if q:
+            qs = qs.filter(**{f"{field_name}__icontains": q})
+
+    values = (
+        qs.order_by(field_name)
+        .values_list(field_name, flat=True)
+        .distinct()[:limit]
+    )
+    options = [
+        {"label": str(value), "value": str(value)}
+        for value in values
+        if value is not None and str(value) != ""
+    ]
+    result = {
+        "field": field_name,
+        "widget": data_field.filter_widget,
+        "options": options,
+    }
+    cache.set(cache_key, result, timeout=60 * 60)
+
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
 def location_map_filter(request):
     """
     給首頁觀測地圖年份、觀測項目下拉選單用
