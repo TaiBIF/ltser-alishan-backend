@@ -37,7 +37,7 @@ from .utils.download import normalize_items_to_labels
 from .tasks import generate_download_zip
 
 from api.permissions import HasInternalApiKey
-from api.importing.registry import ADAPTERS, normalize_package_name
+from api.importing.registry import ADAPTERS
 from api.utils.email_recipients import get_email_targets
 from api.tasks import (
     import_ckan_and_notify,
@@ -837,10 +837,10 @@ def import_ckan_resource(request):
     site = request.data.get("site")
     observation_item = request.data.get("observation_item")
     resource_name = request.data.get("resource_name")
-    base_package_name = request.data.get("package_name")
+    adapter_id = request.data.get("id")
     limit = request.data.get("limit") or 100
     notify_email = request.data.get("notify_email", True)
-    notify_slack = request.data.get("notify_slack", False)
+    notify_slack = request.data.get("notify_slack", True)
 
     if isinstance(notify_email, str):
         notify_email = notify_email.lower() not in ("0", "false", "no", "off")
@@ -852,12 +852,10 @@ def import_ckan_resource(request):
             {"error": "resource_id_required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    if not base_package_name:
+    if not adapter_id:
         return Response(
             {"error": "package_name_required"}, status=status.HTTP_400_BAD_REQUEST
         )
-
-    package_name = normalize_package_name(base_package_name)
 
     try:
         limit = int(limit)
@@ -873,11 +871,11 @@ def import_ckan_resource(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if package_name not in ADAPTERS:
+    if adapter_id not in ADAPTERS:
         return Response(
             {
                 "error": "unknown_dataset",
-                "package_name": package_name,
+                "package_name": adapter_id,
                 "allowed": list(ADAPTERS.keys()),
             },
             status=status.HTTP_400_BAD_REQUEST,
@@ -886,7 +884,7 @@ def import_ckan_resource(request):
     to_list, cc_list = get_email_targets(observation_item) if notify_email else ([], [])
 
     sig1 = import_ckan_and_notify.s(
-        package_name=package_name,
+        package_name=adapter_id,
         resource_id=resource_id,
         base_url=base_url,
         site=site,
@@ -922,7 +920,7 @@ def import_ckan_resource(request):
     return Response(
         {
             "task_id": result.id,  # 這是 chain 的 root id
-            "package_name": package_name,
+            "adapter_id": adapter_id,
             "resource_id": resource_id,
             "base_url": base_url,
             "site": site,

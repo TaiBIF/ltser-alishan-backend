@@ -14,7 +14,3 @@ ADAPTERS = {
     "ltser-indigenous-biosound": BioSoundDataAdapter,
     "ltser-indigenous-weather": WeatherDataAdapter,
 }
-
-
-def normalize_package_name(package_name: str) -> str:
-    return re.sub(r"-\d{6}$", "", package_name)
