@@ -333,7 +333,7 @@ class BirdnetSoundQuerySerializer(serializers.Serializer):
         required=False,
         help_text="調查物種所列學名的鑑定層級。",
     )
-    scientificNameID = serializers.IntegerField(
+    scientificNameID = serializers.CharField(
         required=False,
         help_text="由 TaiCOL 所賦予的學名的唯一識別碼。",
     )

@@ -1,6 +1,9 @@
 import os
 import pytz
 from collections import defaultdict
+from celery import chain
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 from core.base import BaseViewSet
 from django.core.cache import cache
@@ -33,8 +36,14 @@ from .utils.download import normalize_items_to_labels
 
 from .tasks import generate_download_zip
 
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from api.permissions import HasInternalApiKey
+from api.importing.registry import ADAPTERS, normalize_package_name
+from api.utils.email_recipients import get_email_targets
+from api.tasks import (
+    import_ckan_and_notify,
+    send_import_email,
+    send_import_slack,
+)
 
 from .obs_config import OBS_CONFIG
 
@@ -817,3 +826,110 @@ def town_industry(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([HasInternalApiKey])
+def import_ckan_resource(request):
+    base_url = request.data.get("base_url") or "https://data.depositar.io"
+
+    resource_id = request.data.get("resource_id")
+    site = request.data.get("site")
+    observation_item = request.data.get("observation_item")
+    resource_name = request.data.get("resource_name")
+    base_package_name = request.data.get("package_name")
+    limit = request.data.get("limit") or 100
+    notify_email = request.data.get("notify_email", True)
+    notify_slack = request.data.get("notify_slack", False)
+
+    if isinstance(notify_email, str):
+        notify_email = notify_email.lower() not in ("0", "false", "no", "off")
+    if isinstance(notify_slack, str):
+        notify_slack = notify_slack.lower() in ("1", "true", "yes", "on")
+
+    if not resource_id:
+        return Response(
+            {"error": "resource_id_required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not base_package_name:
+        return Response(
+            {"error": "package_name_required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    package_name = normalize_package_name(base_package_name)
+
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        return Response(
+            {"error": "invalid_limit", "expected": "integer"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if limit <= 0:
+        return Response(
+            {"error": "invalid_limit", "expected": "positive integer"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if package_name not in ADAPTERS:
+        return Response(
+            {
+                "error": "unknown_dataset",
+                "package_name": package_name,
+                "allowed": list(ADAPTERS.keys()),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    to_list, cc_list = get_email_targets(observation_item) if notify_email else ([], [])
+
+    sig1 = import_ckan_and_notify.s(
+        package_name=package_name,
+        resource_id=resource_id,
+        base_url=base_url,
+        site=site,
+        observation_item=observation_item,
+        resource_name=resource_name,
+        limit=limit,
+        notify_slack=notify_slack,
+    )
+
+    signatures = [sig1]
+    if notify_slack:
+        signatures.append(
+            send_import_slack.s(
+                site=site,
+                observation_item=observation_item,
+                resource_name=resource_name,
+            )
+        )
+    if notify_email:
+        # 注意：send_import_email 的第一個參數 report 會自動接到上一個 task 的回傳值
+        signatures.append(
+            send_import_email.s(
+                to_emails=to_list,
+                cc_emails=cc_list,
+                observation_item=observation_item,
+                resource_name=resource_name,
+                task_id=None,
+            )
+        )
+
+    result = chain(*signatures).apply_async()
+
+    return Response(
+        {
+            "task_id": result.id,  # 這是 chain 的 root id
+            "package_name": package_name,
+            "resource_id": resource_id,
+            "base_url": base_url,
+            "site": site,
+            "observation_item": observation_item,
+            "resource_name": resource_name,
+            "notify_email": notify_email,
+            "notify_slack": notify_slack,
+        },
+        status=status.HTTP_202_ACCEPTED,
+    )

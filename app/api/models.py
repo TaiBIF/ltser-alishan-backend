@@ -206,6 +206,7 @@ class PlantPhenology(models.Model):
     # 時間戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    data_hash = models.CharField(max_length=64, db_index=True)
 
     class Meta:
         db_table = "api_plantphenology"
@@ -365,6 +366,7 @@ class Cameratrap(models.Model):
     # 時間戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    data_hash = models.CharField(max_length=64, db_index=True)
 
     class Meta:
         db_table = "api_cameratrap"
@@ -448,7 +450,7 @@ class TerreSoundIndex(models.Model):
         blank=True,
         help_text="錄音長度：分鐘數",
     )
-    sec = models.PositiveIntegerField(
+    sec = models.FloatField(
         null=True,
         blank=True,
         help_text="錄音長度：秒數",
@@ -465,6 +467,7 @@ class TerreSoundIndex(models.Model):
     # 時間戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    data_hash = models.CharField(max_length=64, db_index=True)
 
     class Meta:
         db_table = "api_terresoundindex"
@@ -576,8 +579,9 @@ class BirdnetSound(models.Model):
         help_text="調查物種所列學名的鑑定層級。",
     )
 
-    # 14 學名編碼（TaiCOL，數字，網頁不顯示）
-    scientificNameID = models.BigIntegerField(
+    # 14 學名編碼
+    scientificNameID = models.CharField(
+        max_length=128,
         null=True,
         blank=True,
         help_text="由 TaiCOL 所賦予的學名的唯一識別碼。",
@@ -628,6 +632,7 @@ class BirdnetSound(models.Model):
     # 時間戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    data_hash = models.CharField(max_length=64, db_index=True)
 
     class Meta:
         db_table = "api_birdnetsound"
@@ -747,6 +752,7 @@ class BioSound(models.Model):
     # 時間戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    data_hash = models.CharField(max_length=64, db_index=True)
 
     class Meta:
         db_table = "api_biosound"
@@ -888,6 +894,7 @@ class Weather(models.Model):
     # 系統時間戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    data_hash = models.CharField(max_length=64, db_index=True)
 
     class Meta:
         db_table = "api_weather"

@@ -187,7 +187,7 @@ class BirdnetSoundFilter(FilterSet):
     taxonID = CharFilter(field_name="taxonID", lookup_expr="exact")
     scientificName = CharFilter(field_name="scientificName", lookup_expr="exact")
     taxonRank = CharFilter(field_name="taxonRank", lookup_expr="exact")
-    scientificNameID = NumberFilter(field_name="scientificNameID", lookup_expr="exact")
+    scientificNameID = CharFilter(field_name="scientificNameID", lookup_expr="exact")
     family = CharFilter(field_name="family", lookup_expr="exact")
     familyChinese = CharFilter(field_name="familyChinese", lookup_expr="exact")
 
