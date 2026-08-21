@@ -559,24 +559,6 @@ def import_ckan_and_notify(
 
     report["celery_task_id"] = self.request.id
 
-    if notify_slack:
-        webhook = os.environ.get("SLACK_WEBHOOK_URL")
-    else:
-        webhook = None
-
-    if webhook:
-        try:
-            text = format_slack_text(
-                report,
-                site=site,
-                observation_item=observation_item,
-                resource_name=resource_name,
-                task_id=self.request.id,
-            )
-            requests.post(webhook, json={"text": text}, timeout=10)
-        except Exception:
-            pass
-
     return report
 
 @shared_task(
@@ -596,6 +578,12 @@ def send_import_slack(
     webhook = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook:
         return report
+
+    root_id = getattr(self.request, "root_id", None) or report.get("celery_task_id")
+    if root_id:
+        dedupe_key = f"import_slack_sent:{root_id}"
+        if not cache.add(dedupe_key, "1", timeout=60 * 60 * 24):
+            return report
 
     text = format_slack_text(
         report,
@@ -623,7 +611,11 @@ def send_import_email(
     resource_name=None,
     task_id=None,
 ):
-    root_id = getattr(self.request, "root_id", None) or task_id
+    root_id = (
+        getattr(self.request, "root_id", None)
+        or report.get("celery_task_id")
+        or task_id
+    )
     if root_id:
         dedupe_key = f"import_email_sent:{root_id}"
         if not cache.add(dedupe_key, "1", timeout=60 * 60 * 24 * 7):
