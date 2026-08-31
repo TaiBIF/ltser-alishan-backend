@@ -27,6 +27,7 @@ services:
             N8N_HOST: ltsertw-alisan.org
             N8N_PROTOCOL: https
             N8N_PORT: 5678
+            N8N_PATH: /n8n/
             N8N_PROXY_HOPS: 1
             WEBHOOK_URL: https://ltsertw-alisan.org/n8n/
             N8N_WEBHOOK_URL: https://ltsertw-alisan.org/n8n/
