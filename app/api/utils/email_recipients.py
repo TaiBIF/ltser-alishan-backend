@@ -3,11 +3,11 @@ DEFAULT_CC = ["ltsertwalishan@gmail.com"]
 
 OBSERVATION_EMAILS = {
     "鳥音辨識": {
-        "to": ["janiceli0918@gmail.com"],
+        "to": ["cylee918@as.edu.tw"],
         "cc": ["mntuanmu@gate.sinica.edu.tw", "jaredswu@gmail.com"],
     },
     "聲音指數": {
-        "to": ["janiceli0918@gmail.com"],
+        "to": ["cylee918@as.edu.tw"],
         "cc": ["mntuanmu@gate.sinica.edu.tw", "jaredswu@gmail.com"],
     },
     "氣象觀測": {
