@@ -17,3 +17,7 @@ services:
             db:
                 condition: service_started
         restart: always
+
+    n8n:
+        ports:
+            - "5679:5678"

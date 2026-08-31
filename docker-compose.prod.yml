@@ -10,6 +10,7 @@ services:
         image: nginx:alpine
         depends_on:
             - web
+            - n8n
         ports:
             - "80:80"
             - "443:443"
@@ -20,6 +21,17 @@ services:
             - certbot_www:/var/www/certbot
             - letsencrypt:/etc/letsencrypt
         restart: unless-stopped
+
+    n8n:
+        environment:
+            N8N_HOST: ltsertw-alisan.org
+            N8N_PROTOCOL: https
+            N8N_PORT: 5678
+            N8N_PROXY_HOPS: 1
+            WEBHOOK_URL: https://ltsertw-alisan.org/n8n/
+            N8N_WEBHOOK_URL: https://ltsertw-alisan.org/n8n/
+            N8N_EDITOR_BASE_URL: https://ltsertw-alisan.org/n8n/
+            N8N_SECURE_COOKIE: "true"
 
     certbot:
         image: certbot/certbot
