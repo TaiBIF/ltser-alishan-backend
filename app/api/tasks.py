@@ -61,6 +61,47 @@ ERROR_FIELD_PROBLEM_LABELS = {
     ("decimalLatitude", "out_of_range"): "緯度超出允許範圍（需介於 -90 到 90）",
 }
 
+PLANT_PHENOLOGY_PERCENTAGE_FIELDS = [
+    "canopyCoverPercentage",
+    "budCoverPercentage",
+    "newLeafCoverPercentage",
+    "matureLeafCoverPercentage",
+    "yellowLeafCoverPercentage",
+    "deadLeafCoverPercentage",
+    "budFlowerPercentage",
+    "fullBloomPercentage",
+    "wiltedFlowerPercentage",
+    "youngFruitPercentage",
+    "greenFruitPercentage",
+    "ripeFruitPercentage",
+    "wiltedFruitPercentage",
+    "coverInPercentage",
+    "wiltedPercentage",
+]
+
+PLANT_PHENOLOGY_POSITIVE_INT_FIELDS = [
+    "totalFlowerCount",
+    "totalFruitCount",
+    "herbaceousPlantHeight",
+    "individualCount",
+    "fruitCount",
+    "flowerCount",
+    "budCount",
+]
+
+ERROR_FIELD_PROBLEM_LABELS.update(
+    {
+        (field, "out_of_range"): "百分比欄位數值超出允許範圍（需介於 0 到 100）"
+        for field in PLANT_PHENOLOGY_PERCENTAGE_FIELDS
+    }
+)
+ERROR_FIELD_PROBLEM_LABELS.update(
+    {
+        (field, "out_of_range"): "正整數欄位數值超出資料庫允許範圍（需介於 0 到 2147483647）"
+        for field in PLANT_PHENOLOGY_POSITIVE_INT_FIELDS
+    }
+)
+
 
 @shared_task
 def rebuild_location_map_filter_cache():

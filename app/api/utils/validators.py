@@ -234,6 +234,27 @@ def validate_int_optional(value, field_name, record, errors):
     return int(x)
 
 
+def validate_int_range_optional(value, field_name, record, errors, min_value, max_value):
+    """
+    將欄位轉成 int（可為空值），並檢查是否落在指定範圍。
+    """
+    x = validate_int_optional(value, field_name, record, errors)
+    if x is None:
+        return None
+
+    if x < min_value or x > max_value:
+        _push_error(
+            errors,
+            field=field_name,
+            error="out_of_range",
+            value=value,
+            expected=f"{min_value} <= value <= {max_value}",
+        )
+        return None
+
+    return x
+
+
 def validate_event_datetime(value, field_name, record, errors):
     """
     將日期/時間欄位解析為 datetime（可選）

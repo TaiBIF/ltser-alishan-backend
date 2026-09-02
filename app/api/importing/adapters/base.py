@@ -9,6 +9,7 @@ from api.utils.validators import (
     validate_event_date,
     validate_event_datetime,
     validate_int_optional,
+    validate_int_range_optional,
     validate_required,
 )
 
@@ -26,6 +27,7 @@ class BaseImportAdapter:
             "coordinate": validate_coordinate,
             "decimal": validate_decimal,
             "int_optional": validate_int_optional,
+            "int_range_optional": validate_int_range_optional,
             "boolean_optional": validate_boolean_optional,
             "event_date": validate_event_date,
             "event_datetime": validate_event_datetime,

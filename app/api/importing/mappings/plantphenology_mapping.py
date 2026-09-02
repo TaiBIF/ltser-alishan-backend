@@ -5,28 +5,34 @@ DECIMAL_FIELDS = [
 INT_FIELDS = [
     "minimumElevationInMeters",
     "maximumElevationInMeters",
+]
+
+PERCENTAGE_FIELDS = [
     "canopyCoverPercentage",
     "budCoverPercentage",
     "newLeafCoverPercentage",
     "matureLeafCoverPercentage",
     "yellowLeafCoverPercentage",
     "deadLeafCoverPercentage",
-    "totalFlowerCount",
     "budFlowerPercentage",
     "fullBloomPercentage",
     "wiltedFlowerPercentage",
-    "totalFruitCount",
     "youngFruitPercentage",
     "greenFruitPercentage",
     "ripeFruitPercentage",
     "wiltedFruitPercentage",
     "coverInPercentage",
+    "wiltedPercentage",
+]
+
+POSITIVE_INT_FIELDS = [
+    "totalFlowerCount",
+    "totalFruitCount",
     "herbaceousPlantHeight",
     "individualCount",
     "fruitCount",
     "flowerCount",
     "budCount",
-    "wiltedPercentage",
 ]
 
 STRING_FIELDS = [
@@ -90,6 +96,16 @@ def build_plantphenology_payload(record, validators):
     for field in INT_FIELDS:
         payload[field] = validators["int_optional"](
             record.get(field), field, record, errors
+        )
+
+    for field in PERCENTAGE_FIELDS:
+        payload[field] = validators["int_range_optional"](
+            record.get(field), field, record, errors, 0, 100
+        )
+
+    for field in POSITIVE_INT_FIELDS:
+        payload[field] = validators["int_range_optional"](
+            record.get(field), field, record, errors, 0, 2147483647
         )
 
     for field in STRING_FIELDS:
