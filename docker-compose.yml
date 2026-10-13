@@ -68,7 +68,7 @@ services:
         restart: unless-stopped
 
     n8n:
-        image: n8nio/n8n:2.36.2
+        image: n8nio/n8n:2.41.4
         expose:
             - "5678"
         environment:
