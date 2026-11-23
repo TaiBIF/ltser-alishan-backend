@@ -971,3 +971,133 @@ class DownloadRequest(models.Model):
 
     def __str__(self):
         return f"{self.email} - {self.items} - {self.mode}"
+
+
+class IptCamtrapObservation(models.Model):
+    observationID = models.CharField(
+        max_length=256, unique=True, help_text="對應 Cameratrap.observationID"
+    )
+    deploymentID = models.CharField(
+        max_length=128, db_index=True, help_text="對應 Cameratrap.deploymentID"
+    )
+    eventStart = models.DateTimeField(
+        help_text="由 eventDate 與 eventTime 組合；逐張判讀時與 eventEnd 相同"
+    )
+    eventEnd = models.DateTimeField(
+        help_text="由 eventDate 與 eventTime 組合；逐張判讀時與 eventStart 相同"
+    )
+    observationLevel = models.CharField(
+        max_length=16,
+        choices=Cameratrap.OBSERVATION_LEVEL_CHOICES,
+        help_text="對應 Cameratrap.observationLevel；逐張判讀使用 media",
+    )
+    observationType = models.CharField(
+        max_length=32,
+        choices=Cameratrap.OBSERVATION_TYPE_CHOICES,
+        help_text="對應 Cameratrap.observationType；轉換時僅選取 animal 資料",
+    )
+    scientificName = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="對應 Cameratrap.scientificName",
+    )
+    sex = models.CharField(
+        max_length=16,
+        choices=Cameratrap.SEX_CHOICES,
+        null=True,
+        blank=True,
+        help_text="對應 Cameratrap.sex",
+    )
+    classificationMethod = models.CharField(
+        max_length=32,
+        default="human",
+        choices=[("human", "human")],
+        null=True,
+        blank=True,
+        help_text="固定填入 human",
+    )
+
+    class Meta:
+        db_table = "ipt_camtrap_observation"
+
+    def __str__(self):
+        return self.observationID
+
+
+class IptCamtrapMedia(models.Model):
+    mediaID = models.CharField(
+        max_length=512,
+        unique=True,
+        help_text="由 Cameratrap.observationID 與 fileName 以底線連接；fileName 空值視為空字串",
+    )
+    deploymentID = models.CharField(
+        max_length=128, db_index=True, help_text="對應 Cameratrap.deploymentID"
+    )
+    captureMethod = models.CharField(
+        max_length=32,
+        default="activityDetection",
+        choices=[("activityDetection", "activityDetection")],
+        null=True,
+        blank=True,
+        help_text="固定填入 activityDetection",
+    )
+    timestamp = models.DateTimeField(help_text="由 Cameratrap.eventDate 與 eventTime 組合")
+    filePath = models.CharField(
+        max_length=1024, help_text="對應 Cameratrap.filePath，可為 URL 或相對路徑"
+    )
+    filePublic = models.BooleanField(help_text="對應 Cameratrap.filePublic")
+    fileName = models.CharField(
+        max_length=255, null=True, blank=True, help_text="對應 Cameratrap.fileName"
+    )
+    fileMediatype = models.CharField(
+        max_length=64, help_text="對應 Cameratrap.fileMediatype，例如 image/jpeg、video/mp4"
+    )
+
+    class Meta:
+        db_table = "ipt_camtrap_media"
+
+    def __str__(self):
+        return self.mediaID
+
+
+class IptCamtrapDeployment(models.Model):
+    deploymentID = models.CharField(
+        max_length=128, unique=True, help_text="對應 Cameratrap.deploymentID"
+    )
+    locationID = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="對應 Cameratrap.locationID，並以 Location.location_id 查詢地點資料",
+    )
+    locationName = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="以 locationID 對應 api_location 的 location_name",
+    )
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+        help_text="以 locationID 對應 api_location 的 decimal_latitude",
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+        help_text="以 locationID 對應 api_location 的 decimal_longitude",
+    )
+    deploymentStart = models.DateTimeField(
+        help_text="組合 eventDate 與 eventTime，依 deploymentID 分組取最早時間"
+    )
+    deploymentEnd = models.DateTimeField(
+        help_text="組合 eventDate 與 eventTime，依 deploymentID 分組取最晚時間"
+    )
+
+    class Meta:
+        db_table = "ipt_camtrap_deployment"
+
+    def __str__(self):
+        return self.deploymentID

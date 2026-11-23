@@ -37,6 +37,8 @@ from .utils.download import normalize_items_to_labels
 from .tasks import generate_download_zip
 
 from api.permissions import HasInternalApiKey
+from api.utils.ipt_camtrap_sync import sync_camtrap
+from zoneinfo import ZoneInfoNotFoundError
 from api.importing.registry import ADAPTERS
 from api.utils.email_recipients import get_email_targets
 from api.tasks import (
@@ -56,6 +58,53 @@ ITEM_PARAM = openapi.Parameter(
     required=False,
     enum=[cfg["label"] for cfg in OBS_CONFIG.values()],
 )
+
+
+class SyncIptCamtrapAPIView(APIView):
+    authentication_classes = []
+    permission_classes = [HasInternalApiKey]
+
+    @staticmethod
+    def _to_bool(value, default=False):
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off"}:
+            return False
+        raise ValueError("dry_run 與 truncate 必須為布林值")
+
+    def post(self, request):
+        try:
+            if not isinstance(request.data, dict):
+                raise ValueError("請提供 JSON object")
+            deployment_id = request.data.get("deployment_id")
+            source_timezone = request.data.get("source_timezone", "Asia/Taipei")
+            if deployment_id is not None and (
+                not isinstance(deployment_id, str) or not deployment_id.strip()
+            ):
+                raise ValueError("deployment_id 必須為非空字串")
+            if not isinstance(source_timezone, str) or not source_timezone:
+                raise ValueError("source_timezone 必須為有效時區字串")
+            result = sync_camtrap(
+                dry_run=self._to_bool(request.data.get("dry_run")),
+                truncate=self._to_bool(request.data.get("truncate")),
+                limit=request.data.get("limit"),
+                deployment_id=deployment_id,
+                source_timezone=source_timezone,
+            )
+        except (ValueError, ZoneInfoNotFoundError) as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        response_data = {key: value for key, value in result.items() if key != "payloads"}
+        # 需要檢查完整轉換資料時，再開啟以下回傳欄位。
+        # response_data["payloads"] = result["payloads"]
+        return Response(
+            response_data,
+            status=status.HTTP_400_BAD_REQUEST if result["errors"] else status.HTTP_200_OK,
+        )
 
 
 class PlantPhenologyViewSet(BaseViewSet):

@@ -16,6 +16,11 @@ router.register(r"location", LocationViewSet, basename="location")
 
 urlpatterns = [
     path(
+        "internal/ipt/camtrap/sync/",
+        SyncIptCamtrapAPIView.as_view(),
+        name="sync-ipt-camtrap",
+    ),
+    path(
         "plantphenology/chart/",
         PlantPhenologyChartView.as_view(),
         name="plant-phenology-chart",
