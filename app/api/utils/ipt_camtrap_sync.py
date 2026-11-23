@@ -1,11 +1,15 @@
 """Camtrap conversion and manual IPT synchronization, independent of API views."""
 
 from datetime import datetime
+import logging
 from zoneinfo import ZoneInfo
 
+from django.conf import settings
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from redis.exceptions import LockNotOwnedError
 
 from api.models import (
     Cameratrap,
@@ -21,6 +25,14 @@ MODELS = {
     "media": IptCamtrapMedia,
     "deployments": IptCamtrapDeployment,
 }
+
+logger = logging.getLogger(__name__)
+IPT_CAMTRAP_ADAPTER_ID = "ltser-indigenous-alishan-cameratrap"
+IPT_CAMTRAP_SYNC_LOCK_KEY = "ipt_camtrap_sync_lock"
+
+
+class IptCamtrapSyncBusy(Exception):
+    """Another manual or automatic Camtrap sync holds the shared lock."""
 
 
 def convert_camtrap_rows(rows, locations, source_timezone="Asia/Taipei"):
@@ -160,6 +172,27 @@ def convert_camtrap_rows(rows, locations, source_timezone="Asia/Taipei"):
 
 def sync_camtrap(*, dry_run=False, truncate=False, limit=None, deployment_id=None,
                  source_timezone="Asia/Taipei"):
+    # Redis's token-based lock only releases a lock owned by this caller.
+    lock = cache.lock(
+        IPT_CAMTRAP_SYNC_LOCK_KEY,
+        timeout=getattr(settings, "IPT_CAMTRAP_SYNC_LOCK_TIMEOUT", 60 * 60),
+    )
+    if not lock.acquire(blocking=False):
+        raise IptCamtrapSyncBusy("IPT 相機資料同步正在執行，請稍後再試")
+    try:
+        return _sync_camtrap(
+            dry_run=dry_run, truncate=truncate, limit=limit,
+            deployment_id=deployment_id, source_timezone=source_timezone,
+        )
+    finally:
+        try:
+            lock.release()
+        except LockNotOwnedError:
+            logger.error("IPT Camtrap sync lock expired before completion")
+
+
+def _sync_camtrap(*, dry_run=False, truncate=False, limit=None, deployment_id=None,
+                  source_timezone="Asia/Taipei"):
     """Synchronize animal records, or preview without writing.
 
     A limit selects deployment IDs after filtering animals, rather than rows.

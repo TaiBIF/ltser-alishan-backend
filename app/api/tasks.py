@@ -11,11 +11,19 @@ from celery import shared_task
 from django.core.cache import cache
 from django.conf import settings
 from django.core.mail import EmailMessage
+from django.db import InterfaceError, OperationalError
 from django.urls import reverse
 from django.utils import timezone
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from api.importing.importer import import_ckan_resource
 from api.importing.registry import ADAPTERS
+from api.utils.ipt_camtrap_sync import (
+    IPT_CAMTRAP_ADAPTER_ID,
+    IptCamtrapSyncBusy,
+    sync_camtrap,
+)
 
 from .utils.cache_keys import (
     location_map_list_key,
@@ -442,6 +450,30 @@ def cache_town_industry():
 
     cache.set(segis_cache_key("town_industry"), payload, timeout=None)
 
+def format_ipt_sync_lines(report):
+    sync = report.get("ipt_sync") or {}
+    if not sync:
+        return []
+    status_labels = {"success": "成功", "failed": "失敗", "skipped": "略過"}
+    lines = ["", f"IPT 相機資料同步：{status_labels.get(sync.get('status'), '未知')}"]
+    if sync.get("reason"):
+        lines.append(f"原因：{sync['reason']}")
+    for name in ("deployments", "media", "observations"):
+        if "synced" in sync:
+            lines.append(
+                f"{name}：新增 {sync.get('created', {}).get(name, 0)} / "
+                f"更新 {sync.get('updated', {}).get(name, 0)} / "
+                f"同步 {sync.get('synced', {}).get(name, 0)}"
+            )
+    if sync.get("error_count"):
+        lines.append(f"IPT 轉換錯誤：{sync['error_count']}")
+    if sync.get("error"):
+        lines.append(f"錯誤：{sync['error']}")
+    if sync.get("errors_sample"):
+        lines.append(f"錯誤範例：{sync['errors_sample']}")
+    return lines
+
+
 def format_slack_text(
     report, site=None, observation_item=None, resource_name=None, task_id=None
 ):
@@ -467,8 +499,7 @@ def format_slack_text(
         f"fatal_errors: {len(fatal)}",
     ]
 
-    # lines += format_slack_ipt_sync_lines(report) 
-    # 之後有同步至 IPT 功能後才啟動
+    lines += format_ipt_sync_lines(report)
 
     if fatal:
         sample = "\n".join([str(x) for x in fatal[:3]])
@@ -602,6 +633,54 @@ def import_ckan_and_notify(
 
     return report
 
+@shared_task(bind=True, max_retries=3)
+def sync_ipt_camtrap_after_success(self, report, *, adapter_id):
+    """Pass the import report and a compact sync summary to notification tasks."""
+    if adapter_id != IPT_CAMTRAP_ADAPTER_ID:
+        report["ipt_sync"] = {
+            "status": "skipped", "skipped": True, "reason": "not_cameratrap",
+        }
+        return report
+    if (report.get("fatal_errors") or report.get("row_errors") or report.get("row_warnings")):
+        report["ipt_sync"] = {
+            "status": "skipped", "skipped": True, "reason": "import_not_successful",
+        }
+        return report
+
+    try:
+        # Full animal sync; import's limit is a CKAN batch size, not a sync limit.
+        result = sync_camtrap(dry_run=False, truncate=False)
+    except (IptCamtrapSyncBusy, OperationalError, InterfaceError,
+            RedisConnectionError, RedisTimeoutError) as exc:
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+        report["ipt_sync"] = {
+            "status": "failed", "skipped": False,
+            "reason": "retry_exhausted", "error": str(exc)[:1000],
+            "celery_task_id": self.request.id,
+        }
+        return report
+    except Exception as exc:
+        # Return the report so an IPT failure does not suppress import notices.
+        report["ipt_sync"] = {
+            "status": "failed", "skipped": False,
+            "reason": "sync_exception", "error": str(exc)[:1000],
+            "celery_task_id": self.request.id,
+        }
+        return report
+
+    errors = result.get("errors") or []
+    report["ipt_sync"] = {
+        key: value for key, value in result.items() if key not in ("payloads", "errors")
+    }
+    report["ipt_sync"].update(
+        status="failed" if errors or result.get("write_skipped") else "success",
+        skipped=False, celery_task_id=self.request.id,
+        error_count=len(errors), errors_sample=errors[:10],
+    )
+    return report
+
+
 @shared_task(
     bind=True,
     autoretry_for=(Exception,),
@@ -693,24 +772,7 @@ def send_import_email(
     error_section = format_error_breakdown(report)
     fatal_hint = format_fatal_hint(report)
     ipt_sync = report.get("ipt_sync") or {}
-    ipt_sync_section = ""
-    if ipt_sync and not ipt_sync.get("skipped"):
-        occurrence_result = ipt_sync.get("occurrence_extension") or {}
-        event_result = ipt_sync.get("event") or {}
-        ipt_sync_section = (
-            "\n"
-            "──────────────────────────\n"
-            "IPT 同步結果\n"
-            "──────────────────────────\n"
-            f"Event core 同步筆數：{event_result.get('synced_events', 0)}\n"
-            f"Event core 新增/更新：{event_result.get('created', 0)} / {event_result.get('updated', 0)}\n\n"
-            f"Occurrence extension 同步筆數：{occurrence_result.get('synced_occurrences', 0)}\n"
-            f"Occurrence extension 新增/更新：{occurrence_result.get('created', 0)} / {occurrence_result.get('updated', 0)}\n"
-            "\n"
-            "後續請至 IPT 資料集管理頁面確認資料集內容。\n"
-            "進入該資料集後，可於 Source Data 區塊點擊 Save，讓 IPT 重新讀取並套用最新同步資料；\n"
-            "確認資料無誤後，再至 Publication 區塊發布新版資料集。\n"
-        )
+    ipt_sync_section = "\n".join(format_ipt_sync_lines(report)) + "\n" if ipt_sync else ""
 
     fatal_errors = report.get("fatal_errors") or []
 
@@ -723,6 +785,8 @@ def send_import_email(
         status_tag = "完成但有錯誤"
     elif row_warnings:
         status_tag = "完成但有警告"
+    if ipt_sync.get("status") == "failed":
+        status_tag += "（IPT 同步失敗）"
 
     if status_tag == "成功":
         subject = (

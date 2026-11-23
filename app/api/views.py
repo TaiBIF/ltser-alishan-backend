@@ -37,7 +37,11 @@ from .utils.download import normalize_items_to_labels
 from .tasks import generate_download_zip
 
 from api.permissions import HasInternalApiKey
-from api.utils.ipt_camtrap_sync import sync_camtrap
+from api.utils.ipt_camtrap_sync import (
+    IPT_CAMTRAP_ADAPTER_ID,
+    IptCamtrapSyncBusy,
+    sync_camtrap,
+)
 from zoneinfo import ZoneInfoNotFoundError
 from api.importing.registry import ADAPTERS
 from api.utils.email_recipients import get_email_targets
@@ -45,6 +49,7 @@ from api.tasks import (
     import_ckan_and_notify,
     send_import_email,
     send_import_slack,
+    sync_ipt_camtrap_after_success,
 )
 
 from .obs_config import OBS_CONFIG
@@ -96,6 +101,8 @@ class SyncIptCamtrapAPIView(APIView):
                 deployment_id=deployment_id,
                 source_timezone=source_timezone,
             )
+        except IptCamtrapSyncBusy as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
         except (ValueError, ZoneInfoNotFoundError) as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         response_data = {key: value for key, value in result.items() if key != "payloads"}
@@ -944,6 +951,8 @@ def import_ckan_resource(request):
     )
 
     signatures = [sig1]
+    if adapter_id == IPT_CAMTRAP_ADAPTER_ID:
+        signatures.append(sync_ipt_camtrap_after_success.s(adapter_id=adapter_id))
     if notify_slack:
         signatures.append(
             send_import_slack.s(
