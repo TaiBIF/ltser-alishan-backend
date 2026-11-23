@@ -41,6 +41,10 @@ services:
             - letsencrypt:/etc/letsencrypt
         entrypoint: /bin/sh
 
+    db:
+        ports:
+            - "5432:5432"
+
 volumes:
     certbot_www:
     letsencrypt:
