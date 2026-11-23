@@ -38,8 +38,9 @@ class IptCamtrapSyncBusy(Exception):
 def convert_camtrap_rows(rows, locations, source_timezone="Asia/Taipei"):
     """Build validated payloads without saving models.
 
-    ``locations`` maps location_id to a list, because api_location does not enforce
-    uniqueness. Naive source event times are interpreted in source_timezone.
+    ``locations`` contains only cameratrap locations, mapping location_id to a
+    list because api_location does not enforce uniqueness within an observation
+    item. Naive source event times are interpreted in source_timezone.
     """
     tz = ZoneInfo(source_timezone)
     result = {name: [] for name in MODELS}
@@ -135,7 +136,8 @@ def convert_camtrap_rows(rows, locations, source_timezone="Asia/Taipei"):
         matches = locations.get(location_id, [])
         if len(matches) != 1:
             error("deployments", deployment_id,
-                  f"locationID={location_id!r} 對應 {len(matches)} 筆 Location，必須恰為一筆")
+                  f"locationID={location_id!r}、observation_item='cameratrap' "
+                  f"對應 {len(matches)} 筆 Location，必須恰為一筆")
             continue
         location = matches[0]
         payload = validate("deployments", {
@@ -210,7 +212,10 @@ def _sync_camtrap(*, dry_run=False, truncate=False, limit=None, deployment_id=No
         source = source.filter(deploymentID__in=ids)
     location_ids = source.order_by().values_list("locationID", flat=True).distinct()
     locations = {}
-    for location in Location.objects.filter(location_id__in=location_ids).order_by("pk"):
+    for location in Location.objects.filter(
+        location_id__in=location_ids,
+        observation_item="cameratrap",
+    ).order_by("pk"):
         locations.setdefault(location.location_id, []).append(location)
     result = convert_camtrap_rows(
         source.order_by("deploymentID", "pk").iterator(), locations, source_timezone
